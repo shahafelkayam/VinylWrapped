@@ -1,0 +1,10 @@
+{
+  "name": "VinylWrapped",
+  "short_name": "VinylWrapped",
+  "description": "Spotify-Wrapped-style stats for the records you actually spin.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3e9d4",
+  "theme_color": "#f3e9d4",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

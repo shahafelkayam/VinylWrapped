@@ -1,0 +1,36 @@
+{
+  "name": "vinylwrapped",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Spotify-Wrapped-style stats for the records you actually spin. NFC tags + GitHub Actions + GitHub Pages.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ingest": "node scripts/ingest.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource/monoton": "^5.3.0",
+    "@fontsource/shrikhand": "^5.3.0",
+    "@fontsource/space-mono": "^5.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

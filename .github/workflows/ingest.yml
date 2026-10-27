@@ -1,0 +1,51 @@
+# The VinylWrapped "server". Every NFC scan, new record or edit arrives as a
+# repository_dispatch event and is written to the `data` branch by scripts/ingest.ts.
+name: Ingest
+
+run-name: "${{ github.event.action || inputs.event }} ${{ github.event.client_payload.record || github.event.client_payload.id || '' }}"
+
+on:
+  repository_dispatch:
+    types: [spin, add-record, update-record, refresh-record, delete-record, delete-listen]
+  # Handy for testing from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      event:
+        description: Event type
+        type: choice
+        options: [spin, add-record, update-record, refresh-record, delete-record, delete-listen]
+        default: spin
+      payload:
+        description: JSON payload
+        type: string
+        default: '{"record": "abbey-road"}'
+
+# No concurrency group on purpose: GitHub would cancel queued runs, which means lost spins.
+# Instead the script re-applies its event on a fresh checkout whenever a push races another run.
+permissions:
+  contents: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts
+            shared
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Apply event to the data branch
+        env:
+          DATA_REPO: ${{ vars.DATA_REPO || github.repository }}
+          DATA_BRANCH: ${{ vars.DATA_BRANCH || 'data' }}
+          DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN || github.token }}
+          VW_TIMEZONE: ${{ vars.VW_TIMEZONE || 'UTC' }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: node scripts/ingest.ts --data "$RUNNER_TEMP/vinyl-data"
