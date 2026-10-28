@@ -39,20 +39,24 @@ Stats include the following, each with a table view and a comparison to the prev
 
 Ranges: 7/30/90 days, this year, last year, all time, or custom.
 
-## Setup (about 10 minutes)
+## Get your own VinylWrapped (about 15 minutes)
 
-1. **Create a GitHub repository** (for example `VinylWrapped`) and push this project to its `main` branch.
-2. **Enable Pages:** *Settings → Pages → Build and deployment → Source: **GitHub Actions***.
-3. **Set your timezone** (used for spins sent without a time): *Settings → Secrets and variables → Actions → Variables → New variable* `VW_TIMEZONE` = `Asia/Jerusalem` (any IANA zone).
-4. **Deploy:** push to `main` (or run *Actions → Deploy → Run workflow*). The app appears at `https://<you>.github.io/<repo>/`.
-5. **Create a token** for logging in: a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with *Only select repositories → your repo* and *Permissions → **Contents: Read and write***. Nothing else is needed. The login screen links to a pre-filled form.
-6. **Log in** on your laptop and on your iPhone (in Safari). The token stays on the device.
-7. **Add records** (*Add* tab: search MusicBrainz, pick your pressing), then **write each record's link to an NFC tag** (below).
+Everyone runs their own copy. Your records and spins live in your copy of the repository, and only you can add to them. You need a GitHub account and, for the NFC part, an iPhone XS or newer.
+
+1. **Copy this repository:** click **Fork** at the top of this page (or **Use this template**, if you see it). You can keep the name `VinylWrapped` or pick another.
+2. **Turn on Actions (forks only):** in your copy, open the **Actions** tab and click **I understand my workflows, go ahead and enable them**.
+3. **Turn on Pages:** *Settings → Pages → Build and deployment → Source: **GitHub Actions***.
+4. **Set your timezone:** *Settings → Secrets and variables → Actions → Variables → New repository variable*. Name it `VW_TIMEZONE` and give it your [IANA timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones), such as `Europe/London` or `America/New_York`. It's used for spins sent without a time; otherwise UTC is assumed.
+5. **Deploy:** *Actions → Deploy → Run workflow*. After about two minutes your app is live at `https://<your-username>.github.io/VinylWrapped/` (with your repository's name if you renamed it). From then on it redeploys whenever `main` changes.
+6. **Create a login token:** a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) with *Repository access → Only select repositories → your copy* and *Repository permissions → **Contents: Read and write***. Nothing else is needed, and the app's login screen links to a pre-filled form.
+7. **Log in** on your computer and on your iPhone (in Safari, because that's where tag scans open). The token stays on the device.
+8. **Add your records** (*Add* tab: search MusicBrainz, pick your pressing), then **write each record's link to an NFC tag** (see below). Your first record creates the `data` branch.
 
 Optional:
 
 - `DISCOGS_TOKEN` *secret*: a [Discogs personal token](https://www.discogs.com/settings/developers) for higher rate limits on Discogs enrichment. Without it, enrichment still works anonymously.
-- Want to look around first? Open `…/#/demo`, or click *Spin the demo crate*, for 40 real albums and about 20 months of generated listening.
+- Want to look around first? Open `…/#/demo` on your site, or click *Spin the demo crate*, for 40 real albums and about 20 months of generated listening.
+- **Getting updates:** on your fork, click **Sync fork** to pull in new versions of the code. Your `data` branch isn't touched. If the site doesn't redeploy by itself, run *Actions → Deploy* again.
 
 ## NFC tags
 
@@ -96,11 +100,10 @@ A second scan of the same record within 5 minutes is ignored as a double-tap unl
 
 ## Privacy
 
-Stats are computed in your browser, and the app is only usable after logging in. The data itself lives on the `data` branch of your repository:
+Stats are computed in your browser, and only someone with your token can add spins or change records. The data itself is plain JSON on the `data` branch of your copy, and GitHub sets visibility per repository, not per branch:
 
-- **Public repo (free):** the code and `data` branch are public, like a public Last.fm profile.
-- **Private repo:** everything is private. GitHub Pages from a private repo needs a paid plan.
-- **Public app + private data repo (free):** create a private repo (e.g. `vinyl-data`). In the app repo, set the variable `DATA_REPO` = `you/vinyl-data` and the secret `DATA_REPO_TOKEN` (a token with Contents read/write on `vinyl-data`). Then give your login token access to **both** repos and redeploy.
+- **Public copy (free; every fork of this repository is public):** anyone can read your records and spins, like a public Last.fm profile. That includes the Ingest runs in your *Actions* tab, whose names show which record you spun.
+- **Private copy:** everything stays private. Create it with **Use this template** and choose *Private*. Note that GitHub Pages from a private repository needs a paid plan (GitHub Pro).
 
 ## Development
 
@@ -128,6 +131,8 @@ web/       React app: pages/, components/ (charts, turntable, covers), lib/ (sto
 
 ## Troubleshooting
 
+- **Deploy fails with "Get Pages site failed":** Pages isn't on yet (setup step 3). Turn it on and run Deploy again.
+- **Nothing happens in a fork:** Actions are off in new forks until you enable them (setup step 2).
 - **A spin didn't show up:** check *Actions → Ingest*. A spin normally lands within 20–60 seconds, and the header shows "pressing N events…" until it does.
 - **Login says the repo isn't found:** the token doesn't include that repository, or the name is mistyped.
 - **Login says it can't send events:** the token needs *Contents: Read and write*.
