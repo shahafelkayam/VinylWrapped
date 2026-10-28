@@ -1,0 +1,6 @@
+# Supabase CLI settings used by .github/workflows/supabase.yml.
+project_id = "vinylwrapped"
+
+# Signing in is how you get a session in the first place, so this function can't require one.
+[functions.auth-login]
+verify_jwt = false

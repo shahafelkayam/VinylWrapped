@@ -4,7 +4,8 @@ import { computeStats, type Stats } from '../../../shared/stats.ts';
 import { displayGenre } from '../../../shared/genres.ts';
 import { formatDate, formatHour, todayLocal } from '../../../shared/time.ts';
 import { useStore } from '../lib/store.tsx';
-import { href, navigate, type Route } from '../lib/router.ts';
+import { navigate } from '../lib/router.ts';
+import { useView, useViewLink, viewPath } from '../lib/view.tsx';
 import { fmtNumber, fmtPct, plural } from '../lib/format.ts';
 import { Cover } from '../components/Cover.tsx';
 import { Vinyl } from '../components/Vinyl.tsx';
@@ -13,14 +14,19 @@ import { VIZ } from '../components/charts/common.tsx';
 
 const SLIDE_MS = 7000;
 
-export function WrappedPage({ route }: { route: Route }) {
-  const { library, settings, session } = useStore();
+/** `yearParam` is the year in the URL (…/wrapped/2025); `play` opens the story. */
+export function WrappedPage({ yearParam, play }: { yearParam?: string; play: boolean }) {
+  const { settings, me } = useStore();
+  const { library, owner, base } = useView();
+  const link = useViewLink();
+  // Whose name goes on the story: the listener you're viewing, or you.
+  const name = owner?.username ?? me?.username;
   const today = todayLocal();
   const thisYear = Number(today.slice(0, 4));
   const years = useMemo(() => [...new Set(library.listens.map((l) => Number(l.at.slice(0, 4))))].sort((a, b) => b - a), [library]);
   const fallbackYear = years.includes(thisYear) ? thisYear : (years[0] ?? thisYear);
-  const year = Number(route.parts[1]) || fallbackYear;
-  const playing = route.query.get('play') === '1';
+  const year = Number(yearParam) || fallbackYear;
+  const playing = play;
 
   const stats = useMemo(
     () => computeStats(library, { from: `${year}-01-01`, to: year === thisYear ? today : `${year}-12-31` }, { today, weekend: settings.weekend }),
@@ -35,28 +41,28 @@ export function WrappedPage({ route }: { route: Route }) {
         <Stripes className="wrapped-stripes" />
         <span className="kicker">VinylWrapped</span>
         <h1>
-          Your <span>{year}</span> on wax
+          {owner ? `@${owner.username}’s` : 'Your'} <span>{year}</span> on wax
         </h1>
         <div className="year-chips" role="tablist" aria-label="Year">
           {(years.length ? years : [thisYear]).map((y) => (
-            <a key={y} role="tab" aria-selected={y === year} href={href(`/wrapped/${y}`)} className="chip-year">
+            <a key={y} role="tab" aria-selected={y === year} href={link(`/wrapped/${y}`)} className="chip-year">
               {y}
             </a>
           ))}
         </div>
         {enough ? (
           <>
-            <button className="btn btn-big" onClick={() => navigate(`/wrapped/${year}?play=1`)}>
-              ▶ Play my Wrapped
+            <button className="btn btn-big" onClick={() => navigate(viewPath(base, `/wrapped/${year}?play=1`))}>
+              {owner ? '▶ Play their Wrapped' : '▶ Play my Wrapped'}
             </button>
-            {year === thisYear && <p className="muted small">The year isn't over. These are your stats so far.</p>}
+            {year === thisYear && <p className="muted small">The year isn't over. These are the stats so far.</p>}
           </>
         ) : (
           <p className="muted">Not enough spins in {year} to wrap yet ({plural(stats.totals.spins, 'spin')}). Keep scanning!</p>
         )}
       </section>
-      {enough && <SummaryCard stats={stats} year={year} name={session?.login} />}
-      {playing && enough && <Story stats={stats} year={year} name={session?.login} onClose={() => navigate(`/wrapped/${year}`, { replace: true })} />}
+      {enough && <SummaryCard stats={stats} year={year} name={name} />}
+      {playing && enough && <Story stats={stats} year={year} name={name} onClose={() => navigate(viewPath(base, `/wrapped/${year}`), { replace: true })} />}
     </div>
   );
 }

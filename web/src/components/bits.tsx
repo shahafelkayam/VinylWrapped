@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react';
 import type { VinylRecord } from '../../../shared/types.ts';
 import { fmtDelta } from '../lib/format.ts';
-import { href } from '../lib/router.ts';
+import { useViewLink } from '../lib/view.tsx';
 import { Cover } from './Cover.tsx';
 import { Vinyl } from './Vinyl.tsx';
 
@@ -32,8 +32,9 @@ export function StatTile({ label, value, unit, current, previous, note }: { labe
 
 /** A record sleeve with the vinyl peeking out on hover. */
 export function Sleeve({ record, badge, caption }: { record: VinylRecord; badge?: ReactNode; caption?: ReactNode }) {
+  const link = useViewLink();
   return (
-    <a className="sleeve" href={href(`/record/${record.id}`)}>
+    <a className="sleeve" href={link(`/record/${record.id}`)}>
       <div className="sleeve-art">
         <div className="sleeve-vinyl">
           <Vinyl size="100%" labelImage={record.coverUrl} />

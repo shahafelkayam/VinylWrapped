@@ -7,6 +7,7 @@ import type { VinylRecord } from '../../../shared/types.ts';
 import { useStore } from '../lib/store.tsx';
 import { href, navigate } from '../lib/router.ts';
 import { tagUrl } from '../lib/config.ts';
+import { useView, useViewLink } from '../lib/view.tsx';
 import { countryName, countryWithFlag, flag, fmtAgo, fmtDuration, fmtTime, ordinal, plural } from '../lib/format.ts';
 import { Cover } from '../components/Cover.tsx';
 import { Vinyl } from '../components/Vinyl.tsx';
@@ -15,7 +16,9 @@ import { ChartCard } from '../components/charts/common.tsx';
 import { ColumnChart } from '../components/charts/ColumnChart.tsx';
 
 export function RecordPage({ id }: { id: string }) {
-  const { library, send, mode, pending } = useStore();
+  const { send, mode, pending } = useStore();
+  const { library, readOnly, owner } = useView();
+  const link = useViewLink();
   const rec = library.records[id];
   const today = todayLocal();
   const stats = useMemo(() => computeRecordStats(library, id, today), [library, id, today]);
@@ -28,7 +31,7 @@ export function RecordPage({ id }: { id: string }) {
       <div className="page narrow">
         <section className="card">
           <h1>{stats.spins ? 'An unlinked tag' : 'Record not found'}</h1>
-          {stats.spins ? (
+          {stats.spins && !readOnly ? (
             <>
               <p>
                 The tag <code>{id}</code> was scanned {plural(stats.spins, 'time')} but isn't linked to a record yet.
@@ -39,7 +42,7 @@ export function RecordPage({ id }: { id: string }) {
             </>
           ) : (
             <p>
-              There's no record with the id <code>{id}</code> in your crate. <a href={href('/crate')}>Back to the crate</a>
+              There's no record with the id <code>{id}</code> in {owner ? 'this' : 'your'} crate. <a href={link('/crate')}>Back to the crate</a>
             </p>
           )}
         </section>
@@ -62,13 +65,13 @@ export function RecordPage({ id }: { id: string }) {
 
   return (
     <div className="page record-page">
-      <a className="link-button back" href={href('/crate')}>
-        ← Crate
+      <a className="link-button back" href={link('/crate')}>
+        ← {owner ? `@${owner.username}’s crate` : 'Crate'}
       </a>
       <section className="record-hero">
         <div className="record-art">
           <div className="record-art-vinyl">
-            <Vinyl size="100%" labelImage={rec.coverUrl} spinning={stats.spins > 0 && false} />
+            <Vinyl size="100%" labelImage={rec.coverUrl} />
           </div>
           <Cover record={rec} className="record-art-cover" />
         </div>
@@ -96,7 +99,7 @@ export function RecordPage({ id }: { id: string }) {
             )}
             {(rec.format || rec.pressingYear) && (
               <div>
-                <dt>Your pressing</dt>
+                <dt>{readOnly ? 'Pressing' : 'Your pressing'}</dt>
                 <dd>
                   {[rec.format, rec.pressingYear, rec.pressingCountry ? countryWithFlag(rec.pressingCountry) : undefined].filter(Boolean).join(' · ')}
                 </dd>
@@ -132,9 +135,11 @@ export function RecordPage({ id }: { id: string }) {
             </ul>
           )}
           <div className="btn-row">
-            <button className="btn" onClick={() => logSpin(toLocalIso(new Date()), 'web')}>
-              ▶ Log a spin now
-            </button>
+            {!readOnly && (
+              <button className="btn" onClick={() => logSpin(toLocalIso(new Date()), 'web')}>
+                ▶ Log a spin now
+              </button>
+            )}
             {rec.discogs && (
               <a className="btn btn-ghost" href={rec.discogs.url} target="_blank" rel="noreferrer">
                 Discogs ↗
@@ -158,14 +163,14 @@ export function RecordPage({ id }: { id: string }) {
       {error && <Notice tone="error">{error}</Notice>}
 
       <div className="kpis">
-        <StatTile label="Spins" value={String(stats.spins)} note={stats.rank ? `your ${ordinal(stats.rank)} most played` : undefined} />
+        <StatTile label="Spins" value={String(stats.spins)} note={stats.rank ? `${readOnly ? 'their' : 'your'} ${ordinal(stats.rank)} most played` : undefined} />
         <StatTile label="Time on the platter" value={fmtDuration(stats.minutes)} />
         <StatTile label="First spin" value={stats.firstSpin ? formatDate(stats.firstSpin) : '—'} />
         <StatTile label="Last spin" value={stats.lastSpin ? fmtAgo(stats.lastSpin) : '—'} />
         <StatTile label="Favorite hour" value={stats.favoriteHour !== undefined ? formatHour(stats.favoriteHour) : '—'} />
       </div>
 
-      <div className="grid grid-2-1">
+      <div className={readOnly ? "grid" : "grid grid-2-1"}>
         <ChartCard
           kicker="Last 12 months"
           title="Spins per month"
@@ -181,6 +186,7 @@ export function RecordPage({ id }: { id: string }) {
             }))}
           />
         </ChartCard>
+        {!readOnly && (
         <section className="card">
           <span className="kicker">NFC tag</span>
           <h2>The sticker link</h2>
@@ -192,6 +198,7 @@ export function RecordPage({ id }: { id: string }) {
             Write it with NFC Tools (Write › URL). <a href={href('/settings?section=nfc')}>Guide</a>
           </p>
         </section>
+        )}
       </div>
 
       <div className={sides.length ? 'grid grid-2' : 'grid'}>
@@ -228,6 +235,7 @@ export function RecordPage({ id }: { id: string }) {
                     {formatDate(l.local.date)} · {fmtTime(l.at)}
                   </span>
                   <span className="muted small">{l.source}</span>
+                  {!readOnly && (
                   <button
                     className="icon-button"
                     aria-label={`Delete spin on ${formatDate(l.local.date)}`}
@@ -235,9 +243,11 @@ export function RecordPage({ id }: { id: string }) {
                   >
                     ✕
                   </button>
+                  )}
                 </li>
               ))}
           </ul>
+          {!readOnly && (
           <form
             className="inline-form"
             onSubmit={(e) => {
@@ -253,9 +263,18 @@ export function RecordPage({ id }: { id: string }) {
               Add
             </button>
           </form>
+          )}
         </section>
       </div>
 
+      {readOnly ? (
+        rec.notes && (
+          <section className="card">
+            <span className="kicker">Liner notes</span>
+            <p className="notes">{rec.notes}</p>
+          </section>
+        )
+      ) : (
       <section className="card">
         <span className="kicker">Liner notes</span>
         {editing ? (
@@ -298,6 +317,7 @@ export function RecordPage({ id }: { id: string }) {
         )}
         {mode === 'demo' && <p className="muted small">Demo mode: changes are local only.</p>}
       </section>
+      )}
     </div>
   );
 }

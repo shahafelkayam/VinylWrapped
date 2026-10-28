@@ -9,7 +9,7 @@ import { href, navigate } from '../lib/router.ts';
 import { fmtAgo, fmtTime, ordinal } from '../lib/format.ts';
 import { Turntable } from '../components/Turntable.tsx';
 import { Notice } from '../components/bits.tsx';
-import { LoginPage } from './LoginPage.tsx';
+import { AuthPage } from './AuthPage.tsx';
 
 type Phase = 'cueing' | 'duplicate' | 'sending' | 'sent' | 'error' | 'invalid';
 
@@ -22,7 +22,7 @@ export function firstSideMinutes(rec: VinylRecord): number | undefined {
 }
 
 export function SpinPage({ id, doneListenId }: { id: string; doneListenId?: string }) {
-  const { mode, library, status, pending, send } = useStore();
+  const { mode, authReady, library, status, pending, send } = useStore();
   const [phase, setPhase] = useState<Phase>(doneListenId ? 'sent' : 'cueing');
   const [listenId, setListenId] = useState(doneListenId ?? '');
   const [dupeAt, setDupeAt] = useState<string>();
@@ -65,7 +65,8 @@ export function SpinPage({ id, doneListenId }: { id: string; doneListenId?: stri
 
   const facts = useMemo(() => (rec ? computeRecordStats(library, id, todayLocal()) : undefined), [library, id, rec]);
 
-  if (!mode) return <LoginPage compact returnTo={`/spin/${id}`} />;
+  if (!authReady) return <div className="spin-page" />;
+  if (!mode) return <AuthPage compact returnTo={`/spin/${id}`} />;
 
   const confirmed = phase === 'sent' && !pending.some((p) => p.type === 'spin' && (p.payload as { id?: string }).id === listenId);
   const playing = phase === 'sending' || phase === 'sent';
@@ -128,7 +129,7 @@ export function SpinPage({ id, doneListenId }: { id: string; doneListenId?: stri
 
         {phase === 'error' && (
           <Notice tone="error">
-            Couldn't reach GitHub: {error}{' '}
+            Couldn't save the spin: {error}{' '}
             <button className="link-button" onClick={() => log(false)}>
               Try again
             </button>

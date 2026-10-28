@@ -4,6 +4,7 @@ import { displayGenre } from '../../../shared/genres.ts';
 import { formatDate, formatHour, MONTH_SHORT, todayLocal, WEEKDAY_LONG, WEEKDAY_SHORT } from '../../../shared/time.ts';
 import { useStore } from '../lib/store.tsx';
 import { href, type Route } from '../lib/router.ts';
+import { usePronouns, useView, useViewLink } from '../lib/view.tsx';
 import { resolveRange } from '../lib/ranges.ts';
 import { countryName, countryWithFlag, flag, fmtAgo, fmtDuration, fmtHours, fmtNumber, fmtPct, plural } from '../lib/format.ts';
 import { RangePicker } from '../components/RangePicker.tsx';
@@ -17,7 +18,9 @@ import { HourClock } from '../components/charts/HourClock.tsx';
 import { CalendarHeatmap, WeekHourHeatmap } from '../components/charts/Heatmaps.tsx';
 
 export function StatsPage({ route }: { route: Route }) {
-  const { library, settings } = useStore();
+  const { settings } = useStore();
+  const { library, readOnly, owner, base } = useView();
+  const p = usePronouns();
   const today = todayLocal();
   const current = resolveRange(route.query, today, library);
   const { from, to } = current.range;
@@ -26,12 +29,12 @@ export function StatsPage({ route }: { route: Route }) {
     [library, from, to, today, settings.weekend],
   );
 
-  if (!Object.keys(library.records).length && !library.listens.length) return <EmptyCrate />;
+  if (!Object.keys(library.records).length && !library.listens.length) return <EmptyCrate readOnly={readOnly} name={owner?.displayName ?? owner?.username} />;
 
   return (
     <div className="page stats-page">
-      <RangePicker current={current} today={today} basePath="/" />
-      {stats.unlinkedTags.length > 0 && (
+      <RangePicker current={current} today={today} basePath={base || "/"} />
+      {!readOnly && stats.unlinkedTags.length > 0 && (
         <Notice tone="warn">
           {plural(stats.unlinkedTags.length, 'scanned tag')} {stats.unlinkedTags.length === 1 ? "isn't" : "aren't"} linked to a record yet:{' '}
           {stats.unlinkedTags.map((t, i) => (
@@ -46,7 +49,7 @@ export function StatsPage({ route }: { route: Route }) {
           . Link them so those spins count.
         </Notice>
       )}
-      <Hero stats={stats} phrase={current.phrase} />
+      <Hero stats={stats} phrase={current.phrase} who={owner ? `@${owner.username}’s` : 'your'} />
       <Kpis stats={stats} />
       {stats.totals.spins === 0 ? (
         <section className="card quiet-card">
@@ -99,7 +102,7 @@ export function StatsPage({ route }: { route: Route }) {
             <ChartCard
               kicker="A4"
               title="Genre families"
-              subtitle={`Diversity score ${Math.round(stats.diversity * 100)}/100: how evenly your spins spread across families.`}
+              subtitle={`Diversity score ${Math.round(stats.diversity * 100)}/100: how evenly ${p.your} spins spread across families.`}
               table={{ columns: ['Family', 'Spins', 'Share'], rows: stats.topFamilies.map((g) => [g.item, g.count, fmtPct(g.share)]) }}
             >
               <BarList
@@ -133,7 +136,7 @@ export function StatsPage({ route }: { route: Route }) {
             <ChartCard
               kicker="C2"
               title="Around the world"
-              subtitle="Where your artists come from."
+              subtitle={`Where ${p.your} artists come from.`}
               table={{ columns: ['Country', 'Spins'], rows: stats.topCountries.map((c) => [countryName(c.item), c.count]) }}
             >
               <BarList
@@ -156,7 +159,7 @@ export function StatsPage({ route }: { route: Route }) {
             <ChartCard
               kicker="C3"
               title="Labels"
-              subtitle="The imprints on your center labels."
+              subtitle={`The imprints on ${p.your} center labels.`}
               table={{ columns: ['Label', 'Spins'], rows: stats.topLabels.map((l) => [l.item, l.count]) }}
             >
               <BarList rows={stats.topLabels.slice(0, 8).map<BarRow>((l) => ({ key: l.key, label: l.item, text: l.item, value: l.count, detail: fmtPct(l.share) }))} />
@@ -171,12 +174,12 @@ export function StatsPage({ route }: { route: Route }) {
   );
 }
 
-function Hero({ stats, phrase }: { stats: Stats; phrase: string }) {
+function Hero({ stats, phrase, who }: { stats: Stats; phrase: string; who: string }) {
   const top = stats.topRecords[0]?.item;
   return (
     <section className="hero card">
       <div className="hero-copy">
-        <span className="kicker">Now playing: your stats {phrase}</span>
+        <span className="kicker">Now playing: {who} stats {phrase}</span>
         <p className="hero-figure">
           {fmtHours(stats.totals.minutes)}
           <span>hours of wax</span>
@@ -212,6 +215,8 @@ function Kpis({ stats }: { stats: Stats }) {
 }
 
 function HeavyRotation({ stats }: { stats: Stats }) {
+  const p = usePronouns();
+  const link = useViewLink();
   const [first, ...rest] = stats.topRecords;
   if (!first) return null;
   return (
@@ -228,7 +233,7 @@ function HeavyRotation({ stats }: { stats: Stats }) {
             <strong>{fmtNumber(first.count)}</strong> spins
           </p>
           <p className="muted">
-            {fmtDuration(first.minutes)} · {fmtPct(first.share)} of everything you played
+            {fmtDuration(first.minutes)} · {fmtPct(first.share)} of everything {p.you} played
           </p>
         </div>
       </div>
@@ -240,7 +245,7 @@ function HeavyRotation({ stats }: { stats: Stats }) {
           sub: r.item.artistCredit,
           value: r.count,
           detail: fmtDuration(r.minutes),
-          href: href(`/record/${r.item.id}`),
+          href: link(`/record/${r.item.id}`),
           thumb: <Cover record={r.item} size={36} showText={false} className="thumb" />,
         }))}
         ranked={false}
@@ -250,13 +255,14 @@ function HeavyRotation({ stats }: { stats: Stats }) {
 }
 
 function ListeningTimes({ stats }: { stats: Stats }) {
+  const p = usePronouns();
   const peakDay = stats.weekdays.indexOf(Math.max(...stats.weekdays));
   const peakHour = stats.hours.indexOf(Math.max(...stats.hours));
   return (
     <div className="grid grid-3">
       <ChartCard
         kicker="B1"
-        title="Your listening clock"
+        title={`${p.Your} listening clock`}
         subtitle={`Busiest hour: ${formatHour(peakHour)}. ${fmtPct(stats.shares.night)} of spins after 9pm.`}
         table={{ columns: ['Hour', 'Spins'], rows: stats.hours.map((v, h) => [formatHour(h), v]) }}
       >
@@ -265,7 +271,7 @@ function ListeningTimes({ stats }: { stats: Stats }) {
       <ChartCard
         kicker="B2"
         title="Days of the week"
-        subtitle={`${WEEKDAY_LONG[peakDay]}s rule. Weekends hold ${fmtPct(stats.shares.weekend)} of your spins.`}
+        subtitle={`${WEEKDAY_LONG[peakDay]}s rule. Weekends hold ${fmtPct(stats.shares.weekend)} of ${p.your} spins.`}
         table={{ columns: ['Day', 'Spins'], rows: stats.weekdays.map((v, d) => [WEEKDAY_LONG[d], v]) }}
       >
         <ColumnChart
@@ -317,6 +323,8 @@ function Trend({ stats }: { stats: Stats }) {
 }
 
 function TimeMachine({ stats }: { stats: Stats }) {
+  const p = usePronouns();
+  const link = useViewLink();
   const { era } = stats;
   return (
     <div className="grid grid-2-1">
@@ -333,7 +341,7 @@ function TimeMachine({ stats }: { stats: Stats }) {
         <dl className="facts">
           {era.medianYear && (
             <div>
-              <dt>Your musical birth year</dt>
+              <dt>{p.Your} musical birth year</dt>
               <dd>{era.medianYear}</dd>
             </div>
           )}
@@ -347,7 +355,7 @@ function TimeMachine({ stats }: { stats: Stats }) {
             <div>
               <dt>Oldest wax</dt>
               <dd>
-                <a href={href(`/record/${era.oldest.id}`)}>{era.oldest.title}</a> ({era.oldest.year})
+                <a href={link(`/record/${era.oldest.id}`)}>{era.oldest.title}</a> ({era.oldest.year})
               </dd>
             </div>
           )}
@@ -355,7 +363,7 @@ function TimeMachine({ stats }: { stats: Stats }) {
             <div>
               <dt>Freshest pressing</dt>
               <dd>
-                <a href={href(`/record/${era.newest.id}`)}>{era.newest.title}</a> ({era.newest.year})
+                <a href={link(`/record/${era.newest.id}`)}>{era.newest.title}</a> ({era.newest.year})
               </dd>
             </div>
           )}
@@ -366,6 +374,7 @@ function TimeMachine({ stats }: { stats: Stats }) {
 }
 
 function Highlights({ stats }: { stats: Stats }) {
+  const p = usePronouns();
   const items: { title: string; body: ReactNode; record?: Stats['topRecords'][number]['item'] }[] = [];
   if (stats.peakDay) items.push({ title: 'Biggest day', body: `${formatDate(stats.peakDay.date)}: ${plural(stats.peakDay.count, 'spin')}.` });
   if (stats.binge) items.push({ title: 'On repeat', body: `${stats.binge.record.title}, ${stats.binge.value}× on ${formatDate(stats.binge.date)}.`, record: stats.binge.record });
@@ -401,7 +410,7 @@ function Highlights({ stats }: { stats: Stats }) {
             <div>
               <span className="kicker">C5</span>
               <h2>First spins</h2>
-              <p className="card-sub">Records you played for the very first time in this range.</p>
+              <p className="card-sub">Records {p.you} played for the very first time in this range.</p>
             </div>
           </div>
           <div className="sleeve-row">
@@ -416,6 +425,8 @@ function Highlights({ stats }: { stats: Stats }) {
 }
 
 function Personality({ stats }: { stats: Stats }) {
+  const link = useViewLink();
+  const { owner } = useView();
   const p = stats.personality;
   return (
     <section className="card personality">
@@ -423,7 +434,7 @@ function Personality({ stats }: { stats: Stats }) {
         <Vinyl size="100%" labelColor="#e8a33d" />
       </div>
       <div>
-        <span className="kicker">D1 · your listening personality</span>
+        <span className="kicker">D1 · {owner ? `@${owner.username}’s` : 'your'} listening personality</span>
         <h2 className="personality-title">{p.title}</h2>
         <p className="personality-tagline">{p.tagline}</p>
         {p.traits.length > 0 && (
@@ -435,8 +446,8 @@ function Personality({ stats }: { stats: Stats }) {
             ))}
           </ul>
         )}
-        <a className="btn" href={href(`/wrapped`)}>
-          Play your Wrapped ▶
+        <a className="btn" href={link(`/wrapped`)}>
+          {owner ? 'Play their Wrapped ▶' : 'Play your Wrapped ▶'}
         </a>
       </div>
     </section>
@@ -444,6 +455,7 @@ function Personality({ stats }: { stats: Stats }) {
 }
 
 function Dusty({ stats, phrase }: { stats: Stats; phrase: string }) {
+  const p = usePronouns();
   if (!stats.dusty.length) return null;
   return (
     <section className="card dusty">
@@ -452,7 +464,7 @@ function Dusty({ stats, phrase }: { stats: Stats; phrase: string }) {
           <span className="kicker">D2</span>
           <h2>Gathering dust</h2>
           <p className="card-sub">
-            {plural(stats.dusty.length, 'record')} in your crate didn't get a spin {phrase}. Maybe tonight?
+            {plural(stats.dusty.length, 'record')} in {p.your} crate didn't get a spin {phrase}.{p.you === 'you' ? ' Maybe tonight?' : ''}
           </p>
         </div>
       </div>
@@ -465,7 +477,20 @@ function Dusty({ stats, phrase }: { stats: Stats; phrase: string }) {
   );
 }
 
-function EmptyCrate() {
+function EmptyCrate({ readOnly, name }: { readOnly: boolean; name?: string }) {
+  if (readOnly) {
+    return (
+      <div className="page">
+        <section className="card quiet-card">
+          <Vinyl size={120} />
+          <div>
+            <h1>An empty crate</h1>
+            <p>{name ?? 'This listener'} hasn’t added any records yet.</p>
+          </div>
+        </section>
+      </div>
+    );
+  }
   return (
     <div className="page">
       <section className="card onboarding">

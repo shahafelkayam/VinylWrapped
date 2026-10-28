@@ -2824,3 +2824,207 @@ svg .hit:focus-visible {
 .album-hit > * {
   max-width: 100%;
 }
+
+/* ---------- Accounts ---------- */
+
+.ticket-tabs {
+  display: flex;
+  width: max-content;
+  margin: 0.5rem 0 1rem;
+}
+
+.ticket h1 {
+  font-size: clamp(1.7rem, 4vw, 2.2rem);
+}
+
+.field-hint {
+  min-height: 1.1em;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+
+.settings-link {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  background: var(--mustard);
+}
+
+.visibility {
+  border: none;
+  padding: 0;
+  margin: 0.4rem 0 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.visibility legend {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.visibility-option {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.65rem 0.8rem;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.visibility-option.is-selected {
+  border-color: var(--ink);
+  background: #fff7e8;
+}
+
+.visibility-option input {
+  margin-top: 0.3rem;
+  accent-color: var(--rust);
+}
+
+.visibility-option > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.visibility-option .muted {
+  font-size: 0.85rem;
+}
+
+.account-actions {
+  margin: 1rem 0;
+}
+
+.danger-zone {
+  margin-top: 0.5rem;
+  padding-top: 0.8rem;
+  border-top: 1px dashed var(--rule);
+}
+
+.danger-zone summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--bad);
+}
+
+.footer-links {
+  display: flex;
+  gap: 1rem;
+}
+
+/* ---------- People & profiles ---------- */
+
+.people-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.9rem 1rem;
+  color: var(--ink);
+  text-decoration: none;
+  transition: transform 0.12s ease;
+}
+
+.person:hover {
+  color: var(--ink);
+  transform: translate(-2px, -2px);
+}
+
+.person-disc {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--paper);
+  background:
+    radial-gradient(circle, var(--orange) 0 32%, transparent 33%),
+    repeating-radial-gradient(circle, #1d1611 0 2px, #2b2420 2px 4px);
+  box-shadow: var(--shadow-sm);
+}
+
+.person-disc-big {
+  width: 4.5rem;
+  height: 4.5rem;
+  font-size: 2rem;
+}
+
+.person-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.person-text strong,
+.person-text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.person-stats {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ink-3);
+}
+
+.person-badge {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+}
+
+.profile-head {
+  margin-bottom: -0.25rem;
+}
+
+.profile-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  background:
+    radial-gradient(circle at 100% 0%, rgb(232 163 61 / 0.25), transparent 55%),
+    var(--card);
+}
+
+.profile-names h1 {
+  margin: 0;
+}
+
+.profile-names p {
+  margin: 0;
+}
+
+.profile-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .profile-tabs {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+.ticket .notice,
+form.card .notice {
+  margin-bottom: 0.8rem;
+}

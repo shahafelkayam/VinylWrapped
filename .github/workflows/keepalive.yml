@@ -1,0 +1,26 @@
+# Supabase pauses free projects after a week without activity. A tiny read every few days keeps
+# the site awake even when nobody's spinning. (GitHub stops scheduled runs in repositories with
+# no commits for 60 days; re-enable it from the Actions tab if that happens.)
+name: Keep database awake
+
+on:
+  schedule:
+    - cron: '23 6 */3 * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then echo "SUPABASE_URL isn't set yet; nothing to ping."; exit 0; fi
+          curl --fail --silent --show-error --max-time 30 \
+            -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
+            "$SUPABASE_URL/rest/v1/profiles?select=username&limit=1" > /dev/null
+          echo "Database is awake."

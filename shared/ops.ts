@@ -1,5 +1,4 @@
-// Pure operations on the library, shared by the ingest workflow and the web app's demo mode.
-// They must be fast and deterministic: ingest re-applies them on a fresh checkout whenever a push races another run.
+// Pure operations on a library. The web app applies them to its local copy after each change is saved.
 import { DUPLICATE_SPIN_WINDOW_MS, type Library, type Listen, type RecordFields, type VinylRecord } from './types.ts';
 import { instantOf } from './time.ts';
 import { uniqueRecordId } from './ids.ts';
@@ -91,18 +90,4 @@ export function applyOp(library: Library, op: PreparedOp): ApplyResult {
       return { changed: true, message: `🗑️ Removed spin of ${describe(library.records[listen.record], listen.record)} @ ${listen.at}` };
     }
   }
-}
-
-// ---------------------------------------------------------------------------
-// Serialization. One listen per line keeps the data branch's git history readable.
-// ---------------------------------------------------------------------------
-
-export function serializeListens(listens: Listen[]): string {
-  if (!listens.length) return '[]\n';
-  return `[\n${listens.map((l) => JSON.stringify({ id: l.id, record: l.record, at: l.at, source: l.source })).join(',\n')}\n]\n`;
-}
-
-export function serializeRecords(records: Record<string, VinylRecord>): string {
-  const sorted = Object.fromEntries(Object.keys(records).sort().map((k) => [k, records[k]]));
-  return `${JSON.stringify(sorted, null, 2)}\n`;
 }

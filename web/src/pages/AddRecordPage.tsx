@@ -122,7 +122,7 @@ export function AddRecordPage({ route }: { route: Route }) {
             <p>
               {confirmed
                 ? 'Added, with genres, tracklist, label and artist details filled in.'
-                : 'GitHub Actions is fetching the details from MusicBrainz. This usually takes under a minute.'}
+                : 'Saved. Now fetching the full details from MusicBrainz, which takes a few seconds.'}
             </p>
           </div>
         </section>

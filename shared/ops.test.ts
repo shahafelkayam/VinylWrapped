@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Library } from '../shared/types.ts';
-import { applyOp, serializeListens } from '../shared/ops.ts';
-import { normalizeRecordId, sanitizeRecordFields } from './ingest.ts';
+import type { Library } from './types.ts';
+import { applyOp } from './ops.ts';
 
 const record = { title: 'Abbey Road', artistCredit: 'The Beatles', artists: [], genres: ['rock'], tags: [], tracks: [] };
 
@@ -65,25 +64,5 @@ describe('records', () => {
     const lib = fresh();
     applyOp(lib, { type: 'update-record', id: 'abbey-road', patch: { notes: 'UK first press' } });
     expect(lib.records['abbey-road']).toMatchObject({ id: 'abbey-road', notes: 'UK first press', addedAt: '2026-01-01T00:00:00+00:00' });
-  });
-});
-
-describe('input hygiene', () => {
-  it('normalizes record ids from tag URLs', () => {
-    expect(normalizeRecordId(' Abbey-Road\n')).toBe('abbey-road');
-    expect(normalizeRecordId('https://me.github.io/VinylWrapped/#/spin/abbey-road')).toBe('abbey-road');
-    expect(() => normalizeRecordId('../../etc')).toThrow();
-  });
-
-  it('only accepts known record fields', () => {
-    expect(sanitizeRecordFields({ title: ' X ', year: '1971', genres: 'Rock, Soul', id: 'nope', coverUrl: 'http://insecure', evil: 1 })).toEqual({
-      title: 'X',
-      year: 1971,
-      genres: ['rock', 'soul'],
-    });
-  });
-
-  it('writes one listen per line', () => {
-    expect(serializeListens(fresh().listens)).toBe('[\n{"id":"a","record":"abbey-road","at":"2026-10-01T20:00:00+03:00","source":"nfc"}\n]\n');
   });
 });

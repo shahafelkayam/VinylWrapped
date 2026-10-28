@@ -1,253 +1,323 @@
-// App-wide state: who you are, your library, and an "outbox" of events sent to GitHub that
-// haven't landed in the data branch yet. Outbox events are applied optimistically so the UI
-// reacts instantly, then reconciled once the Ingest workflow commits them.
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { EventMap, EventType, Library, RecordFields, VinylRecord } from '../../../shared/types.ts';
+// App-wide state: your account, your library, and the changes currently being saved.
+// Writes go straight to Supabase (the database enforces who may change what); after each one
+// the same pure operation is applied to the local copy so the UI updates instantly.
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import type { EventMap, EventType, Library, Listen, RecordFields, VinylRecord } from '../../../shared/types.ts';
 import { applyOp, type PreparedOp } from '../../../shared/ops.ts';
 import { toLocalIso } from '../../../shared/time.ts';
-import { GitHub, GitHubError } from './github.ts';
-import { storage, type Session, type Settings } from './config.ts';
+import { newListenId, uniqueRecordId } from '../../../shared/ids.ts';
+import { MusicBrainz } from '../../../shared/musicbrainz.ts';
+import { enrichFromMusicBrainz } from '../../../shared/enrich.ts';
+import { supabase } from './supabase.ts';
+import * as api from './api.ts';
+import { storage, type Settings } from './config.ts';
 import { demoLibrary } from './demo.ts';
+import { navigate } from './router.ts';
 
-export type Mode = 'demo' | 'github';
+export type Mode = 'demo' | 'live';
 
-export interface OutboxItem<E extends EventType = EventType> {
+export interface Me extends api.Profile {
+  email?: string;
+}
+
+export interface PendingOp<E extends EventType = EventType> {
   key: string;
   type: E;
   payload: EventMap[E];
   sentAt: number;
-  /** Data commit at the time we sent it; used to confirm events with no visible effect. */
-  shaAtSend?: string | null;
-  /** For add-record: what we already know, so the record shows up immediately. */
-  preview?: RecordFields;
 }
 
 interface StoreValue {
+  /** Whether this build is connected to Supabase (otherwise only the demo works). */
+  backend: boolean;
+  /** False until the saved session (if any) has been restored. */
+  authReady: boolean;
   mode?: Mode;
-  session?: Session;
+  me?: Me;
+  /** Arrived through a password-reset link and should pick a new password. */
+  recovering: boolean;
   settings: Settings;
   status: 'idle' | 'loading' | 'ready' | 'error';
   error?: string;
   library: Library;
-  sha?: string | null;
-  pending: OutboxItem[];
+  pending: PendingOp[];
   refresh: () => Promise<void>;
   send: <E extends EventType>(type: E, payload: EventMap[E], opts?: { preview?: RecordFields }) => Promise<void>;
-  login: (session: Session) => void;
-  logout: () => void;
+  signIn: (username: string, password: string) => Promise<void>;
+  signUp: (input: api.SignUpInput) => Promise<boolean>;
+  signOut: () => Promise<void>;
   startDemo: () => void;
+  leaveDemo: () => void;
+  saveProfile: (patch: { username?: string; displayName?: string; visibility?: api.Visibility }) => Promise<void>;
+  deleteAccount: () => Promise<void>;
+  finishRecovery: () => void;
   updateSettings: (s: Settings) => void;
+  clearError: () => void;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
-const OUTBOX_KEY = 'vw.outbox';
-const OUTBOX_TTL_MS = 15 * 60_000;
-const POLL_MS = 4000;
-
 const EMPTY: Library = { records: {}, listens: [] };
 
-function loadOutbox(): OutboxItem[] {
-  try {
-    const items = JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '[]') as OutboxItem[];
-    return items.filter((i) => Date.now() - i.sentAt < OUTBOX_TTL_MS);
-  } catch {
-    return [];
-  }
+/** One client for enrichment so its 1-request-per-second pacing covers every lookup. */
+const musicBrainz = new MusicBrainz({});
+
+export function fieldsOf(rec: VinylRecord): RecordFields {
+  const { id: _id, addedAt: _addedAt, ...fields } = rec;
+  return fields;
 }
 
-function toOp(item: OutboxItem): PreparedOp | undefined {
-  const p = item.payload as never as Record<string, unknown>;
-  switch (item.type) {
-    case 'spin': {
-      const s = item.payload as EventMap['spin'];
-      return { type: 'spin', force: true, listen: { id: s.id!, record: s.record, at: s.at ?? toLocalIso(new Date(item.sentAt)), source: s.source ?? 'web' } };
-    }
-    case 'add-record':
-      return item.preview ? { type: 'add-record', id: p.id as string, record: item.preview, addedAt: toLocalIso(new Date(item.sentAt)) } : undefined;
-    case 'update-record':
-      return { type: 'update-record', id: p.id as string, patch: p.patch as Partial<RecordFields> };
-    case 'delete-record':
-      return { type: 'delete-record', id: p.id as string };
-    case 'delete-listen':
-      return { type: 'delete-listen', id: p.id as string };
-    default:
-      return undefined;
-  }
-}
-
-/** Applies events on top of a library without mutating it. */
-export function withEvents(base: Library, items: OutboxItem[]): Library {
-  if (!items.length) return base;
-  const lib: Library = { records: { ...base.records }, listens: [...base.listens] };
-  for (const item of items) {
-    const op = toOp(item);
-    if (!op) continue;
-    try {
-      applyOp(lib, op);
-    } catch {
-      // e.g. updating a record that isn't there anymore; ignore.
-    }
-  }
-  return lib;
-}
-
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
-function isConfirmed(item: OutboxItem, base: Library, sha: string | null | undefined): boolean {
-  const p = item.payload as never as Record<string, unknown>;
-  switch (item.type) {
-    case 'spin':
-      return base.listens.some((l) => l.id === p.id);
-    case 'add-record': {
-      const rec = base.records[p.id as string];
-      return !!rec && (p.mbid ? rec.mbid === p.mbid : rec.title === (p.manual as RecordFields | undefined)?.title);
-    }
-    case 'update-record': {
-      const rec = base.records[p.id as string] as unknown as Record<string, unknown> | undefined;
-      return !rec || Object.entries(p.patch as Record<string, unknown>).every(([k, v]) => same(rec[k], v));
-    }
-    case 'delete-record':
-      return !base.records[p.id as string];
-    case 'delete-listen':
-      return !base.listens.some((l) => l.id === p.id);
-    case 'refresh-record':
-      return sha !== item.shaAtSend;
-  }
+function manualFields(manual: Partial<RecordFields> | undefined): RecordFields {
+  const title = manual?.title?.trim();
+  const artistCredit = manual?.artistCredit?.trim();
+  if (!title || !artistCredit) throw new Error('A record needs at least a title and an artist.');
+  return { artists: [{ name: artistCredit, genres: [] }], genres: [], tags: [], tracks: [], ...manual, title, artistCredit };
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<Mode | undefined>(() => storage.mode());
-  const [session, setSession] = useState<Session | undefined>(() => storage.session());
-  const [settings, setSettings] = useState<Settings>(() => storage.settings());
+  const [demo, setDemo] = useState(storage.demo);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(!supabase);
+  const [recovering, setRecovering] = useState(false);
+  const [me, setMe] = useState<Me>();
+  const [settings, setSettings] = useState<Settings>(storage.settings);
   const [status, setStatus] = useState<StoreValue['status']>('idle');
   const [error, setError] = useState<string>();
-  const [base, setBase] = useState<Library>(EMPTY);
-  const [sha, setSha] = useState<string | null>();
-  const [outbox, setOutbox] = useState<OutboxItem[]>(loadOutbox);
-  const shaRef = useRef<string | null | undefined>(undefined);
+  const [base, setBase] = useState<Library>(() => (storage.demo() ? demoLibrary() : EMPTY));
+  const [pending, setPending] = useState<PendingOp[]>([]);
+  const libRef = useRef(base);
+  libRef.current = base;
 
-  const client = useMemo(() => (session ? new GitHub(session.token) : undefined), [session]);
-
+  // Restore the saved session, then follow sign-ins, sign-outs and token refreshes.
   useEffect(() => {
-    localStorage.setItem(OUTBOX_KEY, JSON.stringify(outbox));
-  }, [outbox]);
-
-  const load = useCallback(
-    async (quiet = false) => {
-      if (mode === 'demo') {
-        setBase((b) => (b === EMPTY ? demoLibrary() : b));
-        setStatus('ready');
-        return;
+    if (!supabase) return;
+    let alive = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data } = supabase.auth.onAuthStateChange((event, next) => {
+      // Only update state here: calling Supabase from inside this callback can deadlock it.
+      setSession(next);
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecovering(true);
+        navigate('/reset-password', { replace: true });
       }
-      if (mode !== 'github' || !client || !session) return;
-      if (!quiet) setStatus((s) => (s === 'ready' ? s : 'loading'));
-      try {
-        const { sha: newSha, library } = await client.library(session.dataRepo, session.dataBranch);
-        shaRef.current = newSha;
-        setSha(newSha);
-        setBase(library);
-        setOutbox((items) => items.filter((i) => !isConfirmed(i, library, newSha) && Date.now() - i.sentAt < OUTBOX_TTL_MS));
-        setStatus('ready');
-        setError(undefined);
-      } catch (err) {
-        setError((err as Error).message);
-        setStatus((s) => (s === 'ready' ? s : 'error'));
-        if (err instanceof GitHubError && err.status === 401) {
-          storage.setSession(undefined);
-          setSession(undefined);
-        }
-      }
-    },
-    [mode, client, session],
-  );
+    });
+    return () => {
+      alive = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  const userId = session?.user.id;
+  const email = session?.user.email;
+
+  const load = useCallback(async () => {
+    if (!userId) return;
+    setStatus((s) => (s === 'ready' ? s : 'loading'));
+    try {
+      const [profile, library] = await Promise.all([api.profileById(userId), api.fetchLibrary(userId)]);
+      if (!profile) throw new Error('Your profile is missing. Try signing out and in again.');
+      setMe({ ...profile, ...(email ? { email } : {}) });
+      setBase(library);
+      setStatus('ready');
+      setError(undefined);
+    } catch (err) {
+      setError(api.friendlyError(err));
+      setStatus((s) => (s === 'ready' ? s : 'error'));
+    }
+  }, [userId, email]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (demo) {
+      setStatus('ready');
+      return;
+    }
+    if (userId) {
+      void load();
+    } else {
+      setMe(undefined);
+      setBase(EMPTY);
+      setStatus('idle');
+    }
+  }, [demo, userId, load]);
 
-  // While events are in flight, watch the data branch for the commit that contains them.
-  useEffect(() => {
-    if (mode !== 'github' || !client || !session || !outbox.length) return;
-    const timer = setInterval(async () => {
+  const applyLocal = useCallback((op: PreparedOp) => {
+    setBase((lib) => {
+      const copy: Library = { records: { ...lib.records }, listens: [...lib.listens] };
       try {
-        const current = await client.branchSha(session.dataRepo, session.dataBranch);
-        if (current !== shaRef.current) await load(true);
-        else setOutbox((items) => items.filter((i) => Date.now() - i.sentAt < OUTBOX_TTL_MS));
+        applyOp(copy, op);
       } catch {
-        // Network blip; try again next tick.
+        // E.g. editing a record that was just removed elsewhere; the next refresh fixes it.
       }
-    }, POLL_MS);
-    return () => clearInterval(timer);
-  }, [mode, client, session, outbox.length, load]);
+      return copy;
+    });
+  }, []);
+
+  /** Fetches full details from MusicBrainz in the browser and stores them on the record. */
+  const enrichInto = useCallback(
+    async (id: string, mbid: string) => {
+      const fields = await enrichFromMusicBrainz(musicBrainz, mbid);
+      const notes = libRef.current.records[id]?.notes;
+      const merged = notes ? { ...fields, notes } : fields;
+      if (!demo) await api.updateRecordData(id, merged);
+      applyLocal({ type: 'refresh-record', id, record: merged });
+    },
+    [applyLocal, demo],
+  );
 
   const send = useCallback<StoreValue['send']>(
     async (type, payload, opts) => {
+      if (!demo && !me) throw new Error('Please sign in first.');
       const p = payload as never as Record<string, unknown>;
-      const item: OutboxItem = {
-        key: `${type}:${(p.id as string) ?? (p.record as string) ?? Date.now()}:${Date.now()}`,
-        type,
-        payload,
-        sentAt: Date.now(),
-        shaAtSend: shaRef.current,
-        preview: opts?.preview,
-      };
-      if (mode === 'demo') {
-        // No backend in demo mode: apply locally and pretend it was committed.
-        setBase((b) => withEvents(b, [item]));
+      const key = `${type}:${String(p.id ?? p.record ?? '')}:${Date.now()}:${Math.random()}`;
+      const now = new Date();
+      const done = () => setPending((list) => list.filter((i) => i.key !== key));
+      setPending((list) => [...list, { key, type, payload, sentAt: Date.now() } as PendingOp]);
+
+      let background: Promise<void> | undefined;
+      try {
+        switch (type) {
+          case 'spin': {
+            const s = payload as EventMap['spin'];
+            const listen: Listen = { id: s.id ?? newListenId(), record: s.record, at: s.at ?? toLocalIso(now), source: s.source ?? 'web' };
+            if (!demo) await api.insertListen(listen);
+            applyLocal({ type: 'spin', listen, force: true });
+            break;
+          }
+          case 'add-record': {
+            const a = payload as EventMap['add-record'];
+            const fields = opts?.preview ?? manualFields(a.manual);
+            const id = a.id ?? uniqueRecordId(fields.title, (c) => c in libRef.current.records);
+            if (!demo) await api.upsertRecord(id, fields);
+            applyLocal({ type: 'add-record', id, record: fields, addedAt: toLocalIso(now) });
+            // The record is saved; fill in genres, tracklist and artist details in the background.
+            if (a.mbid) background = enrichInto(id, a.mbid);
+            break;
+          }
+          case 'update-record': {
+            const u = payload as EventMap['update-record'];
+            const rec = libRef.current.records[u.id];
+            if (!rec) throw new Error('That record isn’t in your crate anymore.');
+            if (!demo) await api.updateRecordData(u.id, { ...fieldsOf(rec), ...u.patch });
+            applyLocal({ type: 'update-record', id: u.id, patch: u.patch });
+            break;
+          }
+          case 'refresh-record': {
+            const rec = libRef.current.records[(payload as EventMap['refresh-record']).id];
+            if (!rec?.mbid) throw new Error('This record was added by hand, so there’s nothing to refresh.');
+            background = enrichInto(rec.id, rec.mbid);
+            break;
+          }
+          case 'delete-record': {
+            const id = (payload as EventMap['delete-record']).id;
+            if (!demo) await api.deleteRecord(id);
+            applyLocal({ type: 'delete-record', id });
+            break;
+          }
+          case 'delete-listen': {
+            const id = (payload as EventMap['delete-listen']).id;
+            if (!demo) await api.deleteListen(id);
+            applyLocal({ type: 'delete-listen', id });
+            break;
+          }
+        }
+      } catch (err) {
+        done();
+        throw new Error(api.friendlyError(err));
+      }
+      if (!background) {
+        done();
         return;
       }
-      if (!client || !session) throw new Error('Not logged in.');
-      setOutbox((items) => [...items, item]);
-      try {
-        await client.dispatch(session.appRepo, type, payload);
-      } catch (err) {
-        setOutbox((items) => items.filter((i) => i.key !== item.key));
-        throw err;
-      }
+      background
+        .catch((err: unknown) => setError(`Saved, but couldn’t fetch the details from MusicBrainz: ${api.friendlyError(err)}`))
+        .finally(done);
     },
-    [mode, client, session],
+    [demo, me, applyLocal, enrichInto],
   );
 
-  const library = useMemo(() => withEvents(base, outbox), [base, outbox]);
+  const resetLocal = () => {
+    setMe(undefined);
+    setBase(EMPTY);
+    setPending([]);
+    setStatus('idle');
+    setError(undefined);
+  };
 
   const value: StoreValue = {
-    mode,
-    session,
+    backend: Boolean(supabase),
+    authReady,
+    mode: demo ? 'demo' : session ? 'live' : undefined,
+    me,
+    recovering,
     settings,
     status,
     error,
-    library,
-    sha,
-    pending: outbox,
-    refresh: () => load(),
+    library: base,
+    pending,
+    refresh: load,
     send,
-    login: (s) => {
-      storage.setSession(s);
-      storage.setMode('github');
-      setBase(EMPTY);
-      setSession(s);
-      setMode('github');
+    signIn: async (username, password) => {
+      await api.signInWithUsername(username.trim().toLowerCase(), password);
+      storage.setDemo(false);
+      setDemo(false);
     },
-    logout: () => {
-      storage.setSession(undefined);
-      storage.setMode(undefined);
-      localStorage.removeItem(OUTBOX_KEY);
-      setSession(undefined);
-      setMode(undefined);
-      setBase(EMPTY);
-      setOutbox([]);
-      setStatus('idle');
+    signUp: async (input) => {
+      const ready = await api.signUp(input);
+      if (ready) {
+        storage.setDemo(false);
+        setDemo(false);
+      }
+      return ready;
+    },
+    signOut: async () => {
+      await api.signOut();
+      resetLocal();
     },
     startDemo: () => {
-      storage.setMode('demo');
-      setBase(EMPTY);
-      setMode('demo');
+      storage.setDemo(true);
+      setBase(demoLibrary());
+      setDemo(true);
     },
+    leaveDemo: () => {
+      storage.setDemo(false);
+      setDemo(false);
+      resetLocal();
+    },
+    saveProfile: async (patch) => {
+      if (!me) throw new Error('Please sign in first.');
+      try {
+        await api.updateProfile(me.id, {
+          ...(patch.username !== undefined ? { username: patch.username.trim().toLowerCase() } : {}),
+          ...(patch.displayName !== undefined ? { display_name: patch.displayName.trim() || null } : {}),
+          ...(patch.visibility ? { visibility: patch.visibility } : {}),
+        });
+      } catch (err) {
+        throw new Error(api.friendlyError(err));
+      }
+      setMe((m) =>
+        m && {
+          ...m,
+          ...(patch.username !== undefined ? { username: patch.username.trim().toLowerCase() } : {}),
+          ...(patch.displayName !== undefined ? { displayName: patch.displayName.trim() || undefined } : {}),
+          ...(patch.visibility ? { visibility: patch.visibility } : {}),
+        },
+      );
+    },
+    deleteAccount: async () => {
+      await api.deleteMyAccount();
+      resetLocal();
+    },
+    finishRecovery: () => setRecovering(false),
     updateSettings: (s) => {
       storage.setSettings(s);
       setSettings(s);
     },
+    clearError: () => setError(undefined),
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
@@ -257,8 +327,4 @@ export function useStore(): StoreValue {
   const ctx = useContext(StoreContext);
   if (!ctx) throw new Error('useStore outside StoreProvider');
   return ctx;
-}
-
-export function useRecord(id: string): VinylRecord | undefined {
-  return useStore().library.records[id];
 }

@@ -1,5 +1,6 @@
 // Minimal MusicBrainz + Cover Art Archive + Discogs clients for enrichment.
-// MusicBrainz asks for ≤ 1 request/second and a descriptive User-Agent.
+// MusicBrainz asks for ≤ 1 request/second and, where possible, a descriptive User-Agent
+// (browsers don't let scripts set one, so the web app identifies itself by its Origin instead).
 
 export interface MbTag {
   name: string;
@@ -75,21 +76,22 @@ export interface DiscogsRelease {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export interface ClientOptions {
-  userAgent: string;
+  userAgent?: string;
   discogsToken?: string;
   fetchImpl?: typeof fetch;
 }
 
 export class MusicBrainz {
   private last = 0;
-  private readonly userAgent: string;
+  private readonly baseHeaders: Record<string, string>;
   private readonly discogsToken?: string;
   private readonly fetchImpl: typeof fetch;
 
   constructor(opts: ClientOptions) {
-    this.userAgent = opts.userAgent;
+    this.baseHeaders = opts.userAgent ? { 'User-Agent': opts.userAgent } : {};
     this.discogsToken = opts.discogsToken;
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    // Bound: browsers throw "Illegal invocation" when fetch is called as a method of another object.
+    this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
   }
 
   private async get<T>(path: string, inc: string[]): Promise<T> {
@@ -98,7 +100,7 @@ export class MusicBrainz {
       const wait = this.last + 1100 - Date.now();
       if (wait > 0) await sleep(wait);
       this.last = Date.now();
-      const res = await this.fetchImpl(url, { headers: { 'User-Agent': this.userAgent, Accept: 'application/json' } });
+      const res = await this.fetchImpl(url, { headers: { ...this.baseHeaders, Accept: 'application/json' } });
       if (res.status === 503 || res.status === 429 || res.status >= 500) {
         await sleep(1500 * (attempt + 1));
         continue;
@@ -126,7 +128,7 @@ export class MusicBrainz {
     const targets = [`release/${releaseMbid}`, ...(releaseGroupMbid ? [`release-group/${releaseGroupMbid}`] : [])];
     for (const target of targets) {
       try {
-        const res = await this.fetchImpl(`https://coverartarchive.org/${target}`, { headers: { 'User-Agent': this.userAgent, Accept: 'application/json' } });
+        const res = await this.fetchImpl(`https://coverartarchive.org/${target}`, { headers: { ...this.baseHeaders, Accept: 'application/json' } });
         if (!res.ok) continue;
         const body = (await res.json()) as { images?: CaaImage[] };
         const img = body.images?.find((i) => i.front) ?? body.images?.[0];
@@ -141,7 +143,7 @@ export class MusicBrainz {
 
   async discogs(releaseId: string): Promise<DiscogsRelease | undefined> {
     try {
-      const headers: Record<string, string> = { 'User-Agent': this.userAgent };
+      const headers: Record<string, string> = { ...this.baseHeaders };
       if (this.discogsToken) headers.Authorization = `Discogs token=${this.discogsToken}`;
       const res = await this.fetchImpl(`https://api.discogs.com/releases/${releaseId}`, { headers });
       if (!res.ok) return undefined;

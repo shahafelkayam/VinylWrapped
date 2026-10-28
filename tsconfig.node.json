@@ -21,7 +21,9 @@
     "erasableSyntaxOnly": true
   },
   "include": [
-    "scripts",
-    "shared"
+    "shared",
+    "supabase/tests",
+    "supabase/functions/auth-login/handler.ts",
+    "supabase/functions/auth-login/handler.test.ts"
   ]
 }

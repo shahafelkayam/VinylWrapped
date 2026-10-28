@@ -1,5 +1,5 @@
 // Turns a MusicBrainz release id into a fully described VinylRecord.
-import type { Artist, DiscogsInfo, RecordFields, Track } from '../shared/types.ts';
+import type { Artist, DiscogsInfo, RecordFields, Track } from './types.ts';
 import type { MbArtist, MbRelease, MbReleaseGroup, MbTag, MusicBrainz } from './musicbrainz.ts';
 
 export type EnrichedRecord = RecordFields;

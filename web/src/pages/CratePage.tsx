@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { VinylRecord } from '../../../shared/types.ts';
 import { GENRE_FAMILIES, recordFamily } from '../../../shared/genres.ts';
-import { useStore } from '../lib/store.tsx';
+import { useView } from '../lib/view.tsx';
 import { href } from '../lib/router.ts';
 import { fmtAgo, plural } from '../lib/format.ts';
 import { Notice, Sleeve } from '../components/bits.tsx';
@@ -18,7 +18,7 @@ const SORTS: { id: Sort; label: string }[] = [
 ];
 
 export function CratePage() {
-  const { library } = useStore();
+  const { library, readOnly, owner } = useView();
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<Sort>('played');
   const [family, setFamily] = useState('');
@@ -67,15 +67,17 @@ export function CratePage() {
       <div className="page-head row">
         <div>
           <span className="kicker">The collection</span>
-          <h1>Your crate</h1>
+          <h1>{owner ? `@${owner.username}’s crate` : 'Your crate'}</h1>
           <p className="muted">{plural(total, 'record')}</p>
         </div>
-        <a className="btn" href={href('/add')}>
-          + Add a record
-        </a>
+        {!readOnly && (
+          <a className="btn" href={href('/add')}>
+            + Add a record
+          </a>
+        )}
       </div>
 
-      {unlinked.size > 0 && (
+      {!readOnly && unlinked.size > 0 && (
         <Notice tone="warn">
           Scanned tags waiting for a record:{' '}
           {[...unlinked].map(([id, n], i) => (
@@ -110,7 +112,7 @@ export function CratePage() {
       </div>
 
       {records.length === 0 ? (
-        <p className="muted empty-chart">{total ? 'Nothing matches that filter.' : 'Your crate is empty. Add your first record!'}</p>
+        <p className="muted empty-chart">{total ? 'Nothing matches that filter.' : readOnly ? 'No records here yet.' : 'Your crate is empty. Add your first record!'}</p>
       ) : (
         <div className="crate-grid">
           {records.map((r) => (

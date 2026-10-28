@@ -1,37 +1,11 @@
-// Build-time defaults (set by the Deploy workflow) + per-device state in localStorage.
-
-export interface Session {
-  token: string;
-  /** Repo with the Ingest workflow; repository_dispatch events go here. */
-  appRepo: string;
-  /** Repo + branch holding records.json / listens.json. */
-  dataRepo: string;
-  dataBranch: string;
-  login?: string;
-  avatarUrl?: string;
-}
+// Per-device preferences in localStorage. (Your session is kept by the Supabase client.)
 
 export interface Settings {
   /** Weekend days, Monday = 0 … Sunday = 6. */
   weekend: number[];
 }
 
-/** "owner/repo" from a GitHub Pages URL like https://owner.github.io/repo/. */
-function repoFromLocation(): string {
-  const m = /^([a-z0-9-]+)\.github\.io$/i.exec(location.hostname);
-  const repo = location.pathname.split('/').filter(Boolean)[0];
-  return m && repo ? `${m[1]}/${repo}` : '';
-}
-
-const detected = repoFromLocation();
-
-export const BUILD = {
-  appRepo: import.meta.env.VITE_APP_REPO || detected,
-  dataRepo: import.meta.env.VITE_DATA_REPO || import.meta.env.VITE_APP_REPO || detected,
-  dataBranch: import.meta.env.VITE_DATA_BRANCH || 'data',
-};
-
-const KEYS = { session: 'vw.session', mode: 'vw.mode', settings: 'vw.settings' };
+const KEYS = { demo: 'vw.demo', settings: 'vw.settings' };
 
 function read<T>(key: string): T | undefined {
   try {
@@ -48,10 +22,8 @@ function write(key: string, value: unknown) {
 }
 
 export const storage = {
-  session: () => read<Session>(KEYS.session),
-  setSession: (s: Session | undefined) => write(KEYS.session, s),
-  mode: () => read<'demo' | 'github'>(KEYS.mode),
-  setMode: (m: 'demo' | 'github' | undefined) => write(KEYS.mode, m),
+  demo: () => read<boolean>(KEYS.demo) === true,
+  setDemo: (on: boolean) => write(KEYS.demo, on ? true : undefined),
   settings: (): Settings => ({ weekend: defaultWeekend(), ...read<Partial<Settings>>(KEYS.settings) }),
   setSettings: (s: Settings) => write(KEYS.settings, s),
 };
@@ -71,7 +43,7 @@ function defaultWeekend(): number[] {
   return [5, 6];
 }
 
-/** The URL to write on an NFC tag for a record. */
+/** The URL to write on an NFC tag for one of your records. */
 export function tagUrl(recordId: string): string {
   return `${location.origin}${location.pathname}#/spin/${recordId}`;
 }
