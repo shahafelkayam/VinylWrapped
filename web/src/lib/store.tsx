@@ -125,6 +125,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (demo) {
+      setBase(demoLibrary());
       setStatus('ready');
       return;
     }
@@ -272,7 +273,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     startDemo: () => {
       if (supabase) return;
       storage.setDemo(true);
-      setBase(demoLibrary());
       setDemo(true);
     },
     leaveDemo: () => {

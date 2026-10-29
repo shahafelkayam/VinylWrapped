@@ -2409,13 +2409,15 @@ svg .hit:focus-visible {
 
 .summary-cols {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …) lets long titles shrink to an ellipsis instead of pushing past the card */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 1rem;
 }
 
 .summary-cols ol {
   margin: 0.3rem 0 0;
-  padding-left: 1.1rem;
+  padding-left: 0;
+  list-style-position: inside;
   font-weight: 600;
   font-size: 0.9rem;
 }
