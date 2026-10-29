@@ -12,7 +12,7 @@ export const supabase: SupabaseClient | null =
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          // Password-reset and confirmation links land on the site with tokens in the URL.
+          // Email confirmation links land on the site with tokens in the URL.
           detectSessionInUrl: true,
           flowType: 'implicit',
           storageKey: 'vw.auth',

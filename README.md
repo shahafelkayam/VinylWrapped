@@ -48,10 +48,8 @@ You need a GitHub account and a free Supabase account.
 
 1. On [supabase.com](https://supabase.com), create a new project. Pick a region near your users and a strong **database password**, and save it.
 2. *Authentication → URL Configuration*: set **Site URL** to your site, e.g. `https://<you>.github.io/VinylWrapped/`, and add the same URL under **Redirect URLs**.
-3. *Authentication → Sign In / Providers → Email*: decide on **Confirm email**.
-   - **On:** new users must click a link in an email before signing in.
-   - **Off:** users can use their account immediately.
-4. *Authentication → Emails → SMTP settings*: Supabase's built-in email sender only delivers to your own team's addresses and is heavily rate-limited. For password resets (and confirmations) to reach real users, connect an SMTP provider, e.g. [Resend](https://resend.com), whose free tier is enough.
+3. *Authentication → Sign In / Providers → Email*: turn **Confirm email** off, so new users can use their account immediately.
+4. Optional: *Authentication → Emails → SMTP settings*. Supabase's built-in email sender only delivers to your own team's addresses and is heavily rate-limited. If you want **Confirm email** on, connect an SMTP provider first, e.g. [Resend](https://resend.com), whose free tier is enough. Otherwise other people can't finish signing up.
 5. Optional hardening: *Authentication → Attack Protection* lets you add a CAPTCHA to sign-ups, and you can raise the minimum password length (the app asks for at least 8 characters).
 
 **2. Connect GitHub**
@@ -77,11 +75,19 @@ From then on, pushing to `main` redeploys automatically. Changes under `supabase
 
 ## Using it
 
-- **Sign up** with a username, an email (only for password resets, never shown) and a password.
+- **Sign up** with a username, an email (private, never shown) and a password.
 - **Add records:** *Add* → search MusicBrainz → pick your pressing. The details fill in automatically.
 - **Tag them:** each record has a sticker link (below).
 - **Spin:** tap the sticker and the spin is logged to whoever is signed in on that phone.
 - **People:** browse other listeners and open their stats, Wrapped and crate. Choose who can see yours in *Settings*.
+
+### Put it on your iPhone home screen
+
+1. Open the site in **Safari** and sign in.
+2. Tap **Share** (in iOS 26 it's in the **•••** menu), then **Add to Home Screen**.
+3. Keep **Open as Web App** on and tap **Add**.
+
+VinylWrapped now opens full-screen from its own icon, without Safari's bars. iOS keeps a home-screen app's sign-in separate from Safari's, and NFC taps always open in Safari, so sign in once in each.
 
 ### NFC tags
 
@@ -125,6 +131,6 @@ supabase/   migrations/ (schema + security rules), functions/auth-login/, tests/
 - **Deploy fails with "Set the repository variables…":** add `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` (step 2).
 - **Deploy fails with "Get Pages site failed":** set *Settings → Pages → Source* to GitHub Actions and run Deploy again.
 - **Sign-up says "Database error saving new user":** the Database workflow hasn't run yet, or the username is taken.
-- **Password-reset emails never arrive:** connect an SMTP provider (step 1.4).
+- **Sign-up says "email address not authorized" or no confirmation email arrives:** turn **Confirm email** off, or connect an SMTP provider (steps 1.3–1.4).
 - **The site says it can't reach the server after a quiet week:** the free Supabase project paused. Restore it from the Supabase dashboard; the keep-awake workflow prevents this while it's enabled.
 - **Safari asks you to sign in again after a long break:** Safari can clear site storage after about a week of not visiting the site.

@@ -13,7 +13,6 @@ import { supabase } from './supabase.ts';
 import * as api from './api.ts';
 import { storage, type Settings } from './config.ts';
 import { demoLibrary } from './demo.ts';
-import { navigate } from './router.ts';
 
 export type Mode = 'demo' | 'live';
 
@@ -29,14 +28,12 @@ export interface PendingOp<E extends EventType = EventType> {
 }
 
 interface StoreValue {
-  /** Whether this build is connected to Supabase (otherwise only the demo works). */
+  /** Whether this build is connected to Supabase. Builds without one (local development) offer the demo crate instead. */
   backend: boolean;
   /** False until the saved session (if any) has been restored. */
   authReady: boolean;
   mode?: Mode;
   me?: Me;
-  /** Arrived through a password-reset link and should pick a new password. */
-  recovering: boolean;
   settings: Settings;
   status: 'idle' | 'loading' | 'ready' | 'error';
   error?: string;
@@ -51,7 +48,6 @@ interface StoreValue {
   leaveDemo: () => void;
   saveProfile: (patch: { username?: string; displayName?: string; visibility?: api.Visibility }) => Promise<void>;
   deleteAccount: () => Promise<void>;
-  finishRecovery: () => void;
   updateSettings: (s: Settings) => void;
   clearError: () => void;
 }
@@ -76,15 +72,15 @@ function manualFields(manual: Partial<RecordFields> | undefined): RecordFields {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [demo, setDemo] = useState(storage.demo);
+  // The demo crate only exists when there's no database to sign in to.
+  const [demo, setDemo] = useState(() => !supabase && storage.demo());
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(!supabase);
-  const [recovering, setRecovering] = useState(false);
   const [me, setMe] = useState<Me>();
   const [settings, setSettings] = useState<Settings>(storage.settings);
   const [status, setStatus] = useState<StoreValue['status']>('idle');
   const [error, setError] = useState<string>();
-  const [base, setBase] = useState<Library>(() => (storage.demo() ? demoLibrary() : EMPTY));
+  const [base, setBase] = useState<Library>(() => (demo ? demoLibrary() : EMPTY));
   const [pending, setPending] = useState<PendingOp[]>([]);
   const libRef = useRef(base);
   libRef.current = base;
@@ -98,13 +94,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setSession(data.session);
       setAuthReady(true);
     });
-    const { data } = supabase.auth.onAuthStateChange((event, next) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       // Only update state here: calling Supabase from inside this callback can deadlock it.
       setSession(next);
-      if (event === 'PASSWORD_RECOVERY') {
-        setRecovering(true);
-        navigate('/reset-password', { replace: true });
-      }
     });
     return () => {
       alive = false;
@@ -253,7 +245,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     authReady,
     mode: demo ? 'demo' : session ? 'live' : undefined,
     me,
-    recovering,
     settings,
     status,
     error,
@@ -279,6 +270,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resetLocal();
     },
     startDemo: () => {
+      if (supabase) return;
       storage.setDemo(true);
       setBase(demoLibrary());
       setDemo(true);
@@ -312,7 +304,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await api.deleteMyAccount();
       resetLocal();
     },
-    finishRecovery: () => setRecovering(false),
     updateSettings: (s) => {
       storage.setSettings(s);
       setSettings(s);

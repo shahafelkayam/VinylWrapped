@@ -5,7 +5,7 @@ import { plural } from './lib/format.ts';
 import { ViewProvider } from './lib/view.tsx';
 import { Notice, Spinner, Stripes } from './components/bits.tsx';
 import { Vinyl } from './components/Vinyl.tsx';
-import { AuthPage, ResetPasswordPage } from './pages/AuthPage.tsx';
+import { AuthPage } from './pages/AuthPage.tsx';
 import { StatsPage } from './pages/StatsPage.tsx';
 import { SpinPage } from './pages/SpinPage.tsx';
 import { CratePage } from './pages/CratePage.tsx';
@@ -17,29 +17,46 @@ import { WrappedPage } from './pages/WrappedPage.tsx';
 import { PeoplePage } from './pages/PeoplePage.tsx';
 import { ProfilePage } from './pages/ProfilePage.tsx';
 
-const NAV = [
+const NAV: { to: string; page: string; label: string; icon: ReactNode }[] = [
   { to: '/', page: '', label: 'Stats', icon: '◉' },
   { to: '/wrapped', page: 'wrapped', label: 'Wrapped', icon: '★' },
   { to: '/crate', page: 'crate', label: 'Crate', icon: '▤' },
-  { to: '/people', page: 'people', label: 'People', icon: '☺' },
+  { to: '/people', page: 'people', label: 'People', icon: <PeopleIcon /> },
   { to: '/add', page: 'add', label: 'Add', icon: '+' },
 ];
+
+/** Two listeners, drawn to match the text glyphs (a people character would turn into an emoji on iPhones). */
+function PeopleIcon() {
+  return (
+    <svg className="nav-svg" viewBox="0 0 24 24" fill="currentColor">
+      <clipPath id="nav-people-behind">
+        <path clipRule="evenodd" d="M0 0h24v24H0z M0.6 20a8.4 8 0 0 1 16.8 0z" />
+      </clipPath>
+      <g clipPath="url(#nav-people-behind)">
+        <circle cx="16.8" cy="7.6" r="2.8" />
+        <path d="M11.6 20a5.4 7 0 0 1 10.8 0z" />
+      </g>
+      <circle cx="9" cy="7.5" r="3.6" />
+      <path d="M2 20a7 6.6 0 0 1 14 0z" />
+    </svg>
+  );
+}
 
 /** Pages anyone can open, signed in or not (public profiles and the directory). */
 const PUBLIC_PAGES = new Set(['u', 'people']);
 
 export function App() {
   const route = useRoute();
-  const { mode, authReady } = useStore();
+  const { mode, authReady, backend } = useStore();
   const page = route.parts[0] ?? '';
 
-  // Email links (confirm, reset password) arrive with tokens in the URL; Supabase picks them up.
+  // Email confirmation links arrive with tokens in the URL; Supabase picks them up.
   if (/access_token=|error_description=/.test(route.path) && !route.path.startsWith('/')) return <AuthCallback />;
   if (!authReady) return <Spinner label="Cueing up…" />;
 
   // Tag scans get their own full-screen experience (and their own sign-in prompt).
   if (page === 'spin' || page === 'spun') return <SpinPage id={route.parts[1] ?? ''} doneListenId={page === 'spun' ? route.parts[2] : undefined} />;
-  if (page === 'demo') return <DemoLink />;
+  if (page === 'demo' && !backend) return <DemoLink />;
   if (!mode && !PUBLIC_PAGES.has(page)) return <AuthPage initialTab={page === 'signup' ? 'signup' : 'signin'} returnTo={page === 'login' || page === 'signup' ? '/' : undefined} />;
 
   return (
@@ -49,7 +66,7 @@ export function App() {
   );
 }
 
-/** #/demo: a shareable link straight into the demo crate. */
+/** #/demo: straight into the demo crate (only in builds without a database). */
 function DemoLink() {
   const { mode, startDemo } = useStore();
   useEffect(() => {
@@ -61,12 +78,11 @@ function DemoLink() {
 
 /** Lands here from an emailed link; Supabase reads the tokens, then we continue. */
 function AuthCallback() {
-  const { recovering } = useStore();
   useEffect(() => {
     if (/error_description=/.test(location.hash)) return; // AuthPage shows the message
-    const t = setTimeout(() => navigate(recovering ? '/reset-password' : '/', { replace: true }), 1200);
+    const t = setTimeout(() => navigate('/', { replace: true }), 1200);
     return () => clearTimeout(t);
-  }, [recovering]);
+  }, []);
   if (/error_description=/.test(location.hash)) return <AuthPage />;
   return <Spinner label="Signing you in…" />;
 }
@@ -88,7 +104,7 @@ function ViewPages({ parts, route }: { parts: string[]; route: Route }) {
 }
 
 function Content({ route, page }: { route: Route; page: string }) {
-  const { mode, status, error, refresh, library, recovering } = useStore();
+  const { mode, status, error, refresh, library } = useStore();
 
   if (page === 'u') {
     const username = route.parts[1] ?? '';
@@ -100,7 +116,6 @@ function Content({ route, page }: { route: Route; page: string }) {
     );
   }
   if (page === 'people') return <PeoplePage />;
-  if (page === 'reset-password') return recovering || mode === 'live' ? <ResetPasswordPage /> : <NotFound />;
 
   if (status === 'loading' || (status === 'idle' && mode === 'live')) return <Spinner label="Cueing up your crate…" />;
   if (status === 'error') {

@@ -1,12 +1,12 @@
-// Sign in / sign up / forgot password, on the "backstage pass" ticket.
+// Sign in / sign up, on the "backstage pass" ticket.
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useStore } from '../lib/store.tsx';
 import { navigate } from '../lib/router.ts';
-import { MIN_PASSWORD, requestPasswordReset, updatePassword, USERNAME_RE, usernameAvailable } from '../lib/api.ts';
+import { MIN_PASSWORD, USERNAME_RE, usernameAvailable } from '../lib/api.ts';
 import { Turntable } from '../components/Turntable.tsx';
 import { Notice, Stripes } from '../components/bits.tsx';
 
-type Tab = 'signin' | 'signup' | 'forgot';
+type Tab = 'signin' | 'signup';
 
 export function AuthPage({ returnTo, compact = false, initialTab = 'signin' }: { returnTo?: string; compact?: boolean; initialTab?: Tab }) {
   const { backend, startDemo } = useStore();
@@ -47,13 +47,12 @@ export function AuthPage({ returnTo, compact = false, initialTab = 'signin' }: {
                 Sign up
               </button>
             </div>
-            {tab === 'signin' && <SignInForm onDone={done} onForgot={() => setTab('forgot')} />}
+            {tab === 'signin' && <SignInForm onDone={done} />}
             {tab === 'signup' && <SignUpForm onDone={done} />}
-            {tab === 'forgot' && <ForgotForm onBack={() => setTab('signin')} />}
           </>
         )}
 
-        {!compact && (
+        {!backend && !compact && (
           <p className="login-demo">
             Just browsing?{' '}
             <button type="button" className="link-button" onClick={startDemo}>
@@ -94,7 +93,7 @@ function Field({ label, hint, children }: { label: string; hint?: ReactNode; chi
   );
 }
 
-function SignInForm({ onDone, onForgot }: { onDone: () => void; onForgot: () => void }) {
+function SignInForm({ onDone }: { onDone: () => void }) {
   const { signIn } = useStore();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -115,11 +114,6 @@ function SignInForm({ onDone, onForgot }: { onDone: () => void; onForgot: () => 
       <button className="btn btn-block" type="submit" disabled={busy}>
         {busy ? 'Checking your pass…' : 'Sign in'}
       </button>
-      <p className="login-demo">
-        <button type="button" className="link-button" onClick={onForgot}>
-          Forgot your password?
-        </button>
-      </p>
     </form>
   );
 }
@@ -180,7 +174,7 @@ function SignUpForm({ onDone }: { onDone: () => void }) {
       <Field label="Display name (optional)">
         <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={50} autoComplete="nickname" />
       </Field>
-      <Field label="Email" hint="Only used to reset your password. Never shown to anyone.">
+      <Field label="Email" hint="Private. Never shown to anyone.">
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
       </Field>
       <Field label="Password" hint={`At least ${MIN_PASSWORD} characters.`}>
@@ -191,69 +185,5 @@ function SignUpForm({ onDone }: { onDone: () => void }) {
         {busy ? 'Printing your pass…' : 'Create account'}
       </button>
     </form>
-  );
-}
-
-function ForgotForm({ onBack }: { onBack: () => void }) {
-  const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
-  const { busy, error, submit } = useSubmit(async () => {
-    await requestPasswordReset(email);
-    setSent(true);
-  });
-  return (
-    <form onSubmit={submit}>
-      <h1>Reset your password</h1>
-      {sent ? (
-        <Notice tone="ok">If an account uses that email, a reset link is on its way. Open it on this device.</Notice>
-      ) : (
-        <>
-          <Field label="Email you signed up with">
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-          </Field>
-          {error && <Notice tone="error">{error}</Notice>}
-          <button className="btn btn-block" type="submit" disabled={busy}>
-            {busy ? 'Sending…' : 'Send reset link'}
-          </button>
-        </>
-      )}
-      <p className="login-demo">
-        <button type="button" className="link-button" onClick={onBack}>
-          ← Back to sign in
-        </button>
-      </p>
-    </form>
-  );
-}
-
-/** Where password-reset links land: choose a new password. */
-export function ResetPasswordPage() {
-  const { finishRecovery } = useStore();
-  const [password, setPassword] = useState('');
-  const [again, setAgain] = useState('');
-  const { busy, error, submit } = useSubmit(async () => {
-    if (password.length < MIN_PASSWORD) throw new Error(`Use at least ${MIN_PASSWORD} characters.`);
-    if (password !== again) throw new Error('The two passwords don’t match.');
-    await updatePassword(password);
-    finishRecovery();
-    navigate('/', { replace: true });
-  });
-  return (
-    <div className="page narrow">
-      <form className="card" onSubmit={submit}>
-        <span className="kicker">New pass</span>
-        <h1>Choose a new password</h1>
-        <Field label="New password" hint={`At least ${MIN_PASSWORD} characters.`}>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required />
-        </Field>
-        <Field label="Repeat it">
-          <input type="password" value={again} onChange={(e) => setAgain(e.target.value)} autoComplete="new-password" required />
-        </Field>
-        {error && <Notice tone="error">{error}</Notice>}
-        <button className="btn" type="submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Save password'}
-        </button>
-      </form>
-    </div>
   );
 }

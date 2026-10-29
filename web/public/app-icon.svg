@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Home-screen icon source: the PNGs next to it are rendered from this file. -->
+  <rect width="512" height="512" fill="#f3e9d4"/>
+  <rect y="290" width="512" height="24" fill="#e8a33d"/>
+  <rect y="322" width="512" height="24" fill="#d9622b"/>
+  <rect y="354" width="512" height="24" fill="#a43f17"/>
+  <rect y="386" width="512" height="24" fill="#6b2d2d"/>
+  <circle cx="256" cy="246" r="178" fill="#151311" stroke="#f3e9d4" stroke-width="10"/>
+  <g fill="none" stroke="#fff" stroke-opacity=".13" stroke-width="3">
+    <circle cx="256" cy="246" r="152"/>
+    <circle cx="256" cy="246" r="130"/>
+    <circle cx="256" cy="246" r="108"/>
+  </g>
+  <path d="M146 136a156 156 0 0 1 110-45" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="256" cy="246" r="72" fill="#d9622b"/>
+  <path d="M184 246a72 72 0 0 1 72-72v72z" fill="#e8a33d"/>
+  <circle cx="256" cy="246" r="10" fill="#f3e9d4"/>
+</svg>

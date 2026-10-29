@@ -272,10 +272,6 @@ export async function signUp(input: SignUpInput): Promise<boolean> {
   return Boolean(data.session);
 }
 
-export async function requestPasswordReset(email: string): Promise<void> {
-  check(await requireSupabase().auth.resetPasswordForEmail(email.trim(), { redirectTo: siteUrl() }));
-}
-
 export async function updatePassword(password: string): Promise<void> {
   const { error } = await requireSupabase().auth.updateUser({ password });
   if (error) throw new Error(friendlyError(error));

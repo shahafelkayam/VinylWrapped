@@ -324,6 +324,13 @@ main {
   font-family: var(--font-sans);
 }
 
+.nav-svg {
+  display: inline-block;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+}
+
 .topbar-end {
   display: flex;
   align-items: center;
